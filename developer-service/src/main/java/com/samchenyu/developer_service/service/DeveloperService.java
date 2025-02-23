@@ -36,8 +36,8 @@ public class DeveloperService {
         Optional<Developer> developer = developerRepository.findById(id);
         if(developer.isPresent()) {
             // Fetching from project microservice
-            // Better to have url in application.properties
-            Project project = restTemplate.getForObject("http://localhost:8080/project/" + developer.get().getProjectId(), Project.class);
+            // linked with the service registry
+            Project project = restTemplate.getForObject("http://PROJECT-SERVICE:8082/project/" + developer.get().getProjectId(), Project.class);
             DeveloperResponse developerResponse = new DeveloperResponse(
                                             developer.get().getId(),
                                             developer.get().getName(),
