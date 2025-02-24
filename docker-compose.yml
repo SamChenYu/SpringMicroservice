@@ -1,0 +1,171 @@
+version: '3.8'
+
+services:
+  # MySQL Service
+  db:
+    image: mysql:latest
+    container_name: mysql_container
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword # Todo: change this
+      MYSQL_DATABASE: project_database # Todo: change this
+      MYSQL_USER: user # Todo: change this
+      MYSQL_PASSWORD: password # Todo: change this
+    volumes:
+      - db_data:/var/lib/mysql
+    healthcheck:
+        test: ["CMD", "mysqladmin", "ping", "-h", "db", "-uuser", "-ppassword"]
+        interval: 10s
+        retries: 5
+        start_period: 30s
+        timeout: 5s
+    networks:
+      - default  # Use the default network
+
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin:latest
+    container_name: phpmyadmin_container
+    ports:
+      - "8083:80" # Access phpMyAdmin at http://localhost:8083
+    environment:
+      PMA_HOST: db
+      PMA_USER: user
+      PMA_PASSWORD: password
+    depends_on:
+      - db
+    networks:
+      - default
+
+  # MongoDB Service
+  mongo:
+    image: mongo:latest
+    container_name: mongo_container
+    ports:
+      - "27017:27017" # Expose MongoDB on port 27017
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root # Todo: change this
+      MONGO_INITDB_ROOT_PASSWORD: rootpassword # Todo: change this
+      MONGO_INITDB_DATABASE: developer_database # Todo: change this
+    volumes:
+      - mongo_data:/data/db
+    networks:
+      - mongo_network
+    healthcheck:
+        test: ["CMD", "mongosh", "--eval", "db.runCommand({ ping: 1 })"]
+        interval: 10s
+        retries: 5
+        start_period: 30s
+        timeout: 5s
+
+  mongo-express:
+    image: mongo-express:latest
+    container_name: mongo_express_container
+    ports:
+      - "8081:8081" # Access Mongo Express at http://localhost:8081
+    environment:
+      ME_CONFIG_MONGODB_SERVER: mongo
+      ME_CONFIG_MONGODB_PORT: 27017
+      ME_CONFIG_MONGODB_ADMINUSERNAME: root # Todo: change this
+      ME_CONFIG_MONGODB_ADMINPASSWORD: rootpassword # Todo: change this
+    depends_on:
+      - mongo
+    networks:
+      - mongo_network
+
+
+
+  # Microservices
+
+
+  # Cloud Gateway Service
+  cloud-gateway:
+    build:
+      context: ./cloud-gateway
+      dockerfile: Dockerfile
+    depends_on:
+      db:
+        condition: service_healthy
+      mongo:
+        condition: service_healthy
+      service-registry:
+        condition: service_healthy
+    environment:
+      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://service-registry:8761/eureka/
+      - EUREKA_INSTANCE_HOSTNAME=cloud-gateway  # Use service name as hostname inside Docker
+    ports:
+      - "8085:8085"
+    networks:
+      - default
+
+  # Service Registry
+  service-registry:
+    build:
+      context: ./service-registry
+      dockerfile: Dockerfile
+    depends_on:
+      - db
+      - mongo
+    ports:
+      - "8761:8761"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://service-registry:8761/actuator/health"]
+      interval: 10s
+      retries: 5
+      start_period: 30s
+      timeout: 5s
+    networks:
+      - default
+
+  # Developer Service
+  developer-service:
+    build:
+      context: ./developer-service
+      dockerfile: Dockerfile
+    depends_on:
+      db:
+        condition: service_healthy
+      mongo:
+        condition: service_healthy
+      service-registry:
+        condition: service_healthy  # Ensures Eureka is healthy before starting
+    environment:
+        - spring.data.mongodb.uri=mongodb://root:rootpassword@mongo:27017/developer_database?authSource=admin
+        - eureka.client.service-url.defaultZone=http://service-registry:8761/eureka/
+        - eureka.instance.hostname=developer-service  # Service name to be used as the hostname inside Docker
+    ports:
+      - "8080:8080"
+    networks:
+      - default
+      - mongo_network
+
+  # Project Service
+  project-service:
+    build:
+      context: ./project-service
+      dockerfile: Dockerfile
+    depends_on:
+      db:
+        condition: service_healthy
+      mongo:
+        condition: service_healthy
+      service-registry:
+        condition: service_healthy  # Ensures Eureka is healthy before starting
+    environment:
+        - spring.datasource.url=jdbc:mysql://db:3306/project_database
+        - eureka.client.service-url.defaultZone=http://service-registry:8761/eureka/
+        - eureka.instance.hostname=project-service  # Service name to be used as the hostname inside Docker
+    ports:
+      - "8082:8082"
+    networks:
+      - default
+
+volumes:
+  db_data:
+  mongo_data:
+
+networks:
+  default:
+    driver: bridge  # Default network where all services can talk to each other
+  mongo_network:
+    driver: bridge  # For isolating mongo and mongo-express, optional
