@@ -7,7 +7,7 @@ This repository demonstrates a microservices architecture in Spring Boot
 * **Service Registry (Eureka):** Enables service discovery.
 * **Cloud Gateway (Spring Cloud Gateway):** Provides API routing, load balancing and gateway functionality.
 
-A `docker-compose.yml` file is included for deployment using Docker.   
+A `docker-compose.yml` file is included for running all services locally using Docker.
 ```bash
 docker-compose up -d
 ```
